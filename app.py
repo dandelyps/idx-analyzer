@@ -91,17 +91,17 @@ def show_screener():
 
     st.caption(f"Showing {len(display_df)} companies — click a ticker to view details")
 
-# Header row
-header = st.columns([1, 2, 2, 1, 1, 1, 1, 1, 1, 1])
-header[0].markdown("**Ticker**")
-header[1].markdown("**Company**")
-header[2].markdown("**Sector**")
-for i, col_name in enumerate(["PER", "PBV", "ROE %", "Net Margin %", "DER", "Rev Growth %", "Div Yield %"]):
-    header[i+3].markdown(f"**{col_name}**")
-st.divider()
+    # Header row
+    header = st.columns([1, 2, 2, 1, 1, 1, 1, 1, 1, 1])
+    header[0].markdown("**Ticker**")
+    header[1].markdown("**Company**")
+    header[2].markdown("**Sector**")
+    for i, col_name in enumerate(["PER", "PBV", "ROE %", "Net Margin %", "DER", "Rev Growth %", "Div Yield %"]):
+        header[i+3].markdown(f"**{col_name}**")
+    st.divider()
 
-# Clickable table
-for _, row in display_df.iterrows():
+    # Clickable table
+    for _, row in display_df.iterrows():
         cols = st.columns([1, 2, 2, 1, 1, 1, 1, 1, 1, 1])
         if cols[0].button(str(row["Ticker"]), key=f"btn_{row['Ticker']}"):
             st.session_state.selected_ticker = row["Ticker"]
