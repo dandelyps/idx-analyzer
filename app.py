@@ -17,6 +17,24 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- COMPACT STYLE ---
+st.markdown("""
+<style>
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    .stMetric { background: #f8f9fa; border-radius: 8px; padding: 8px 12px; }
+    .stMetric label { font-size: 0.75rem !important; color: #666 !important; }
+    div[data-testid="stHorizontalBlock"] { gap: 0.5rem; }
+    .stTabs [data-baseweb="tab"] { font-size: 0.8rem; padding: 6px 12px; }
+    .stDataFrame { font-size: 0.82rem; }
+    h1 { font-size: 1.5rem !important; margin-bottom: 0 !important; }
+    h2 { font-size: 1.2rem !important; }
+    h3 { font-size: 1rem !important; }
+    .stAlert { padding: 8px 12px; font-size: 0.85rem; }
+    .stSelectbox label, .stNumberInput label, .stTextInput label { font-size: 0.82rem; }
+    hr { margin: 0.5rem 0; }
+</style>
+""", unsafe_allow_html=True)
+
 # --- LOAD DATA ---
 @st.cache_data(ttl=300)
 def load_ratios():
@@ -59,12 +77,16 @@ if "page" not in st.session_state:
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = None
 
-# --- SIDEBAR NAVIGATION ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.title("📊 IDX Analyzer")
+    st.markdown("### 📊 IDX Analyzer")
     st.divider()
     if st.button("🔍 Screener", use_container_width=True):
         st.session_state.page = "screener"
+        st.session_state.selected_ticker = None
+        st.rerun()
+    if st.button("📊 Sector Comparison", use_container_width=True):
+        st.session_state.page = "comparison"
         st.session_state.selected_ticker = None
         st.rerun()
     if st.button("➕ Data Input Center", use_container_width=True):
@@ -72,7 +94,7 @@ with st.sidebar:
         st.session_state.selected_ticker = None
         st.rerun()
     st.divider()
-    st.caption("Personal stock analysis tool\nIndonesia Market")
+    st.caption("Indonesia Market · Personal Tool")
 
 
 # ============================================================
@@ -80,25 +102,21 @@ with st.sidebar:
 # ============================================================
 def show_screener():
     st.title("📊 IDX Fundamental Analyzer")
-    st.caption("Personal stock analysis tool — Indonesia Market")
 
     df = load_ratios()
-
     if df.empty:
         st.warning("No data yet. Use the Data Input Center to add companies.")
         return
 
-    st.subheader("🔍 Screener")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
         sectors = ["All"] + sorted(df["sector"].dropna().unique().tolist())
-        selected_sector = st.selectbox("Sector", sectors)
-    with col2:
+        selected_sector = st.selectbox("Sector", sectors, label_visibility="collapsed")
+    with c2:
         years = sorted(df["year"].dropna().unique().tolist(), reverse=True)
-        selected_year = st.selectbox("Year", years)
-    with col3:
-        search = st.text_input("Search ticker or name")
+        selected_year = st.selectbox("Year", years, label_visibility="collapsed")
+    with c3:
+        search = st.text_input("Search", placeholder="🔍 Search ticker or name...", label_visibility="collapsed")
 
     filtered = df[df["year"] == selected_year].copy()
     if selected_sector != "All":
@@ -120,19 +138,18 @@ def show_screener():
     numeric_cols = display_df.select_dtypes(include="number").columns
     display_df[numeric_cols] = display_df[numeric_cols].round(2)
 
-    st.caption(f"Showing {len(display_df)} companies — click a ticker to view details")
+    st.caption(f"{len(display_df)} companies · FY{selected_year} · click ticker for details")
+    st.divider()
 
-    header = st.columns([1, 2, 2, 1, 1, 1, 1, 1, 1, 1])
-    header[0].markdown("**Ticker**")
-    header[1].markdown("**Company**")
-    header[2].markdown("**Sector**")
-    for i, col_name in enumerate(["PER", "PBV", "ROE %", "Net Margin %", "DER", "Rev Growth %", "Div Yield %"]):
-        header[i+3].markdown(f"**{col_name}**")
+    cols_layout = [0.8, 2, 1.5, 0.7, 0.7, 0.8, 1, 0.7, 1, 0.8]
+    header = st.columns(cols_layout)
+    for i, label in enumerate(["Ticker", "Company", "Sector", "PER", "PBV", "ROE %", "Net Margin %", "DER", "Rev Growth %", "Div Yield %"]):
+        header[i].markdown(f"<small><b>{label}</b></small>", unsafe_allow_html=True)
     st.divider()
 
     for _, row in display_df.iterrows():
-        cols = st.columns([1, 2, 2, 1, 1, 1, 1, 1, 1, 1])
-        if cols[0].button(str(row["Ticker"]), key=f"btn_{row['Ticker']}"):
+        cols = st.columns(cols_layout)
+        if cols[0].button(str(row["Ticker"]), key=f"btn_{row['Ticker']}_{selected_year}"):
             st.session_state.selected_ticker = row["Ticker"]
             st.session_state.page = "company"
             st.rerun()
@@ -142,16 +159,12 @@ def show_screener():
             val = row.get(col_name, None)
             cols[i+3].write("—" if pd.isna(val) else val)
 
-    st.divider()
-    st.caption("Showing " + str(len(display_df)) + " companies")
-
 
 # ============================================================
 # COMPANY DETAIL PAGE
 # ============================================================
 def show_company(ticker):
     df = load_company_history(ticker)
-
     if df.empty:
         st.error(f"No data found for {ticker}")
         return
@@ -159,145 +172,120 @@ def show_company(ticker):
     latest = df.iloc[-1]
     company_name = latest.get("name", ticker)
 
-    if st.button("← Back to Screener"):
-        st.session_state.page = "screener"
-        st.session_state.selected_ticker = None
-        st.rerun()
-
-    st.title(f"{ticker} — {company_name}")
-    st.caption(f"{latest.get('sector', '')} · {latest.get('sub_sector', '')} · Reporting in {latest.get('report_unit', '')}")
+    c1, c2 = st.columns([1, 8])
+    with c1:
+        if st.button("← Back"):
+            st.session_state.page = "screener"
+            st.session_state.selected_ticker = None
+            st.rerun()
+    with c2:
+        st.markdown(f"### {ticker} — {company_name}")
+        st.caption(f"{latest.get('sector','')} · {latest.get('sub_sector','')} · FY{int(latest.get('year',''))} · {latest.get('report_unit','')} IDR")
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📌 Snapshot", "📋 Financials", "📈 Ratios & Trends",
-        "🚨 Red Flags", "💰 DCF Valuation", "💵 Dividends"
+        "📌 Snapshot", "📋 Financials", "📈 Trends",
+        "🚨 Red Flags", "💰 DCF", "💵 Dividends"
     ])
 
     # TAB 1: SNAPSHOT
     with tab1:
-        st.subheader("Key Metrics — Latest Year")
-        year = int(latest.get("year", ""))
-        st.caption(f"Based on FY{year} data")
+        def mc(label, value, fmt="{:.2f}", suffix=""):
+            st.metric(label, "—" if (value is None or pd.isna(value)) else f"{fmt.format(value)}{suffix}")
 
-        def metric_card(label, value, format_str="{:.2f}", suffix=""):
-            if value is None or pd.isna(value):
-                st.metric(label, "—")
-            else:
-                st.metric(label, f"{format_str.format(value)}{suffix}")
-
-        st.markdown("**Valuation**")
         c1, c2, c3, c4 = st.columns(4)
-        with c1: metric_card("PER", latest.get("per"))
-        with c2: metric_card("PBV", latest.get("pbv"))
-        with c3: metric_card("P/S", latest.get("ps_ratio"))
-        with c4: metric_card("P/FCF", latest.get("p_fcf"))
+        with c1:
+            st.caption("**VALUATION**")
+            mc("PER", latest.get("per"))
+            mc("PBV", latest.get("pbv"))
+        with c2:
+            st.caption("**VALUATION**")
+            mc("P/S", latest.get("ps_ratio"))
+            mc("P/FCF", latest.get("p_fcf"))
+        with c3:
+            st.caption("**PROFITABILITY**")
+            mc("ROE", latest.get("roe"), suffix="%")
+            mc("ROA", latest.get("roa"), suffix="%")
+        with c4:
+            st.caption("**PROFITABILITY**")
+            mc("Net Margin", latest.get("net_margin"), suffix="%")
+            mc("Gross Margin", latest.get("gross_margin"), suffix="%")
 
-        st.markdown("**Profitability**")
+        st.divider()
         c1, c2, c3, c4 = st.columns(4)
-        with c1: metric_card("ROE", latest.get("roe"), suffix="%")
-        with c2: metric_card("ROA", latest.get("roa"), suffix="%")
-        with c3: metric_card("Net Margin", latest.get("net_margin"), suffix="%")
-        with c4: metric_card("Gross Margin", latest.get("gross_margin"), suffix="%")
-
-        st.markdown("**Financial Health**")
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: metric_card("DER", latest.get("der"))
-        with c2: metric_card("Interest Coverage", latest.get("interest_coverage"))
-        with c3: metric_card("Current Ratio", latest.get("current_ratio"))
-        with c4: metric_card("OCF / Net Income", latest.get("ocf_to_ni"))
-
-        st.markdown("**Growth (YoY)**")
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: metric_card("Revenue Growth", latest.get("revenue_growth_yoy"), suffix="%")
-        with c2: metric_card("Net Income Growth", latest.get("ni_growth_yoy"), suffix="%")
-        with c3: metric_card("Equity Growth", latest.get("equity_growth_yoy"), suffix="%")
-        with c4: metric_card("DPS Growth", latest.get("dps_growth_yoy"), suffix="%")
+        with c1:
+            st.caption("**HEALTH**")
+            mc("DER", latest.get("der"))
+            mc("Current Ratio", latest.get("current_ratio"))
+        with c2:
+            st.caption("**HEALTH**")
+            mc("Interest Coverage", latest.get("interest_coverage"))
+            mc("OCF / NI", latest.get("ocf_to_ni"))
+        with c3:
+            st.caption("**GROWTH YoY**")
+            mc("Revenue", latest.get("revenue_growth_yoy"), suffix="%")
+            mc("Net Income", latest.get("ni_growth_yoy"), suffix="%")
+        with c4:
+            st.caption("**GROWTH YoY**")
+            mc("Equity", latest.get("equity_growth_yoy"), suffix="%")
+            mc("DPS", latest.get("dps_growth_yoy"), suffix="%")
 
     # TAB 2: FINANCIALS
     with tab2:
-        st.subheader("Financial Statements")
-        st.caption(f"All figures in {latest.get('report_unit', 'reported unit')} IDR")
-
-        income_cols = {
-            "year": "Year", "revenue": "Revenue", "gross_profit": "Gross Profit",
-            "ebit": "EBIT", "net_income": "Net Income",
-            "depreciation_amortization": "D&A", "interest_expense": "Interest Expense",
-            "eps_diluted": "EPS (Diluted)"
-        }
-        balance_cols = {
-            "year": "Year", "cash": "Cash", "accounts_receivable": "Receivables",
-            "inventory": "Inventory", "total_current_assets": "Current Assets",
-            "total_assets": "Total Assets", "total_current_liabilities": "Current Liabilities",
-            "total_debt": "Total Debt", "total_equity": "Total Equity"
-        }
-        cashflow_cols = {
-            "year": "Year", "operating_cash_flow": "Operating CF",
-            "capex": "Capex", "fcf": "Free Cash Flow", "dividends_paid": "Dividends Paid"
-        }
+        st.caption(f"All figures in {latest.get('report_unit','reported unit')} IDR")
 
         def show_table(cols_map):
-            available = [c for c in cols_map if c in df.columns]
-            t = df[available].rename(columns=cols_map).set_index("Year")
-            numeric = t.select_dtypes(include="number").columns
-            t[numeric] = t[numeric].round(1)
+            avail = [c for c in cols_map if c in df.columns]
+            t = df[avail].rename(columns=cols_map).set_index("Year")
+            t[t.select_dtypes(include="number").columns] = t.select_dtypes(include="number").round(1)
             st.dataframe(t, use_container_width=True)
 
-        st.markdown("**Income Statement**")
-        show_table(income_cols)
-        st.markdown("**Balance Sheet**")
-        show_table(balance_cols)
-        st.markdown("**Cash Flow**")
-        show_table(cashflow_cols)
+        show_table({"year":"Year","revenue":"Revenue","gross_profit":"Gross Profit","ebit":"EBIT",
+                    "net_income":"Net Income","depreciation_amortization":"D&A",
+                    "interest_expense":"Interest Exp","eps_diluted":"EPS"})
+        show_table({"year":"Year","cash":"Cash","accounts_receivable":"Receivables","inventory":"Inventory",
+                    "total_current_assets":"Curr Assets","total_assets":"Total Assets",
+                    "total_current_liabilities":"Curr Liab","total_debt":"Total Debt","total_equity":"Equity"})
+        show_table({"year":"Year","operating_cash_flow":"OCF","capex":"Capex",
+                    "fcf":"FCF","dividends_paid":"Dividends"})
 
-    # TAB 3: RATIOS & TRENDS
+    # TAB 3: TRENDS
     with tab3:
-        st.subheader("Ratio Trends Over Time")
-
-        def line_chart(title, col, suffix=""):
+        def lc(title, col, suffix=""):
             if col in df.columns and df[col].notna().any():
-                fig = px.line(df, x="year", y=col, markers=True, title=f"{title} ({suffix})" if suffix else title)
-                fig.update_layout(height=300, margin=dict(t=40, b=20))
+                fig = px.line(df, x="year", y=col, markers=True,
+                              title=f"{title}{' ('+suffix+')' if suffix else ''}")
+                fig.update_layout(height=250, margin=dict(t=30,b=10,l=10,r=10))
                 st.plotly_chart(fig, use_container_width=True)
 
-        def bar_chart(title, col, suffix=""):
+        def bc(title, col):
             if col in df.columns and df[col].notna().any():
-                fig = px.bar(df, x="year", y=col, title=f"{title} ({suffix})" if suffix else title)
-                fig.update_layout(height=300, margin=dict(t=40, b=20))
+                fig = px.bar(df, x="year", y=col, title=title)
+                fig.update_layout(height=250, margin=dict(t=30,b=10,l=10,r=10))
                 st.plotly_chart(fig, use_container_width=True)
 
-        c1, c2 = st.columns(2)
-        with c1: bar_chart("Revenue", "revenue", latest.get('report_unit',''))
-        with c2: bar_chart("Net Income", "net_income", latest.get('report_unit',''))
+        c1, c2, c3 = st.columns(3)
+        with c1: bc("Revenue", "revenue")
+        with c2: bc("Net Income", "net_income")
+        with c3: lc("Net Margin", "net_margin", "%")
 
-        c1, c2 = st.columns(2)
-        with c1: line_chart("ROE", "roe", "%")
-        with c2: line_chart("Net Margin", "net_margin", "%")
+        c1, c2, c3 = st.columns(3)
+        with c1: lc("ROE", "roe", "%")
+        with c2: lc("DER", "der")
+        with c3: lc("Current Ratio", "current_ratio")
 
-        c1, c2 = st.columns(2)
-        with c1: line_chart("DER", "der")
-        with c2: line_chart("Current Ratio", "current_ratio")
-
-        c1, c2 = st.columns(2)
-        with c1: line_chart("Revenue Growth YoY", "revenue_growth_yoy", "%")
-        with c2: line_chart("Net Income Growth YoY", "ni_growth_yoy", "%")
-
-        c1, c2 = st.columns(2)
-        with c1: line_chart("PER", "per")
-        with c2: line_chart("PBV", "pbv")
+        c1, c2, c3 = st.columns(3)
+        with c1: lc("PER", "per")
+        with c2: lc("PBV", "pbv")
+        with c3: lc("OCF / NI", "ocf_to_ni")
 
     # TAB 4: RED FLAGS
     with tab4:
-        st.subheader("🚨 Automated Red Flag Detection")
-        st.caption("Based on available historical data")
-
-        flags = []
-        warnings = []
-        green = []
+        flags, warnings, green = [], [], []
 
         if len(df) >= 2:
             last = df.iloc[-1]
             prev = df.iloc[-2]
 
-            # Debt growing faster than revenue
             if pd.notna(last.get("total_debt")) and pd.notna(prev.get("total_debt")) and \
                pd.notna(last.get("revenue")) and pd.notna(prev.get("revenue")):
                 debt_growth = (last["total_debt"] - prev["total_debt"]) / abs(prev["total_debt"]) * 100
@@ -307,7 +295,6 @@ def show_company(ticker):
                 else:
                     green.append(f"🟢 Debt growth ({debt_growth:.1f}%) in line with revenue growth ({rev_growth:.1f}%)")
 
-            # Declining net margin
             margins = df["net_margin"].dropna().tolist()
             if len(margins) >= 3 and margins[-1] < margins[-2] < margins[-3]:
                 flags.append(f"🔴 Net margin declining 3 years in a row ({margins[-3]:.1f}% → {margins[-2]:.1f}% → {margins[-1]:.1f}%)")
@@ -316,181 +303,370 @@ def show_company(ticker):
             elif len(margins) >= 2:
                 green.append(f"🟢 Net margin stable or improving ({margins[-2]:.1f}% → {margins[-1]:.1f}%)")
 
-            # Negative FCF while reporting profit
             if pd.notna(last.get("fcf")) and pd.notna(last.get("net_income")):
                 if last["fcf"] < 0 and last["net_income"] > 0:
-                    flags.append(f"🔴 Negative FCF ({last['fcf']:.0f}) while reporting positive net income — earnings quality concern")
+                    flags.append(f"🔴 Negative FCF ({last['fcf']:.0f}) while reporting positive net income")
                 elif last["fcf"] > 0:
                     green.append(f"🟢 Positive Free Cash Flow ({last['fcf']:.0f})")
 
-            # OCF vs Net Income
             if pd.notna(last.get("ocf_to_ni")):
                 if last["ocf_to_ni"] < 0.7:
                     warnings.append(f"🟡 OCF/Net Income ratio is low ({last['ocf_to_ni']:.2f}) — profit may not be fully backed by cash")
                 elif last["ocf_to_ni"] >= 1.0:
                     green.append(f"🟢 OCF/Net Income = {last['ocf_to_ni']:.2f} — strong earnings quality")
 
-            # Receivables growing faster than revenue
             if pd.notna(last.get("accounts_receivable")) and pd.notna(prev.get("accounts_receivable")) and \
                pd.notna(last.get("revenue")) and pd.notna(prev.get("revenue")):
                 rec_growth = (last["accounts_receivable"] - prev["accounts_receivable"]) / abs(prev["accounts_receivable"]) * 100
                 rev_growth = (last["revenue"] - prev["revenue"]) / abs(prev["revenue"]) * 100
                 if rec_growth > rev_growth + 15:
-                    warnings.append(f"🟡 Receivables growing faster than revenue ({rec_growth:.1f}% vs {rev_growth:.1f}%) — potential collection issue")
+                    warnings.append(f"🟡 Receivables growing faster than revenue ({rec_growth:.1f}% vs {rev_growth:.1f}%)")
 
-            # Dividends exceeding net income
             if pd.notna(last.get("dividends_paid")) and pd.notna(last.get("net_income")):
                 if last["dividends_paid"] > 0 and last["net_income"] > 0:
                     if last["dividends_paid"] > last["net_income"]:
-                        flags.append(f"🔴 Dividends paid ({last['dividends_paid']:,.0f}) exceeded net income ({last['net_income']:,.0f}) — paying out more than earned")
+                        flags.append(f"🔴 Dividends paid ({last['dividends_paid']:,.0f}) exceeded net income ({last['net_income']:,.0f})")
                     elif last["dividends_paid"] > last["net_income"] * 0.9:
-                        warnings.append(f"🟡 Dividends paid ({last['dividends_paid']:,.0f}) is {last['dividends_paid']/last['net_income']*100:.0f}% of net income — very high payout ratio")
+                        warnings.append(f"🟡 Dividends paid is {last['dividends_paid']/last['net_income']*100:.0f}% of net income — very high payout")
 
-            # High DER
             if pd.notna(last.get("der")):
                 if last["der"] > 2.0:
                     flags.append(f"🔴 High DER of {last['der']:.2f} — significant leverage risk")
                 elif last["der"] > 1.0:
-                    warnings.append(f"🟡 DER of {last['der']:.2f} — moderate leverage, monitor closely")
+                    warnings.append(f"🟡 DER of {last['der']:.2f} — moderate leverage")
                 else:
                     green.append(f"🟢 DER of {last['der']:.2f} — healthy leverage level")
 
-            # Interest coverage
             if pd.notna(last.get("interest_coverage")):
                 if last["interest_coverage"] < 2:
-                    flags.append(f"🔴 Interest coverage of {last['interest_coverage']:.2f}x — dangerously low, risk of default")
+                    flags.append(f"🔴 Interest coverage {last['interest_coverage']:.2f}x — dangerously low")
                 elif last["interest_coverage"] < 4:
-                    warnings.append(f"🟡 Interest coverage of {last['interest_coverage']:.2f}x — adequate but tight")
+                    warnings.append(f"🟡 Interest coverage {last['interest_coverage']:.2f}x — adequate but tight")
                 else:
-                    green.append(f"🟢 Interest coverage of {last['interest_coverage']:.2f}x — comfortable debt service")
+                    green.append(f"🟢 Interest coverage {last['interest_coverage']:.2f}x — comfortable")
 
         if flags:
-            st.markdown("### 🔴 Critical Flags")
-            for f in flags:
-                st.error(f)
+            st.markdown("**🔴 Critical Flags**")
+            for f in flags: st.error(f)
         if warnings:
-            st.markdown("### 🟡 Watch Items")
-            for w in warnings:
-                st.warning(w)
+            st.markdown("**🟡 Watch Items**")
+            for w in warnings: st.warning(w)
         if green:
-            st.markdown("### 🟢 Healthy Signals")
-            for g in green:
-                st.success(g)
+            st.markdown("**🟢 Healthy Signals**")
+            for g in green: st.success(g)
         if not flags and not warnings and not green:
-            st.info("Not enough historical data to run red flag detection. Add at least 2 years of data.")
+            st.info("Need at least 2 years of data.")
 
-    # TAB 5: DCF VALUATION
+    # TAB 5: DCF
     with tab5:
-        st.subheader("DCF Intrinsic Value Estimator")
-        st.caption("Adjust assumptions below. All calculations are based on latest year FCF.")
-
         latest_fcf = latest.get("fcf")
         latest_price = latest.get("stock_price")
 
         if pd.isna(latest_fcf) or latest_fcf is None:
-            st.warning("FCF not available. Make sure Operating Cash Flow and Capex are entered for this company.")
+            st.warning("FCF not available. Enter Operating Cash Flow and Capex first.")
         else:
-            st.markdown(f"**Base FCF (latest year):** {latest_fcf:,.0f} {latest.get('report_unit', '')}")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**Your Assumptions**")
-                growth_1_5 = st.slider("Growth rate Year 1–5 (%)", 0, 30, 10) / 100
-                growth_6_10 = st.slider("Growth rate Year 6–10 (%)", 0, 20, 5) / 100
-                terminal_growth = st.slider("Terminal growth rate (%)", 0, 5, 2) / 100
-                discount_rate = st.slider("Discount rate / WACC (%)", 5, 20, 10) / 100
+            st.caption(f"Base FCF: {latest_fcf:,.0f} {latest.get('report_unit','')}")
+            c1, c2 = st.columns(2)
+            with c1:
+                growth_1_5 = st.slider("Growth Yr 1–5 (%)", 0, 30, 10) / 100
+                growth_6_10 = st.slider("Growth Yr 6–10 (%)", 0, 20, 5) / 100
+                terminal_growth = st.slider("Terminal growth (%)", 0, 5, 2) / 100
+                discount_rate = st.slider("WACC (%)", 5, 20, 10) / 100
 
             fcf = latest_fcf
             projected_fcfs = []
             for yr in range(1, 11):
-                rate = growth_1_5 if yr <= 5 else growth_6_10
-                fcf = fcf * (1 + rate)
+                fcf = fcf * (1 + (growth_1_5 if yr <= 5 else growth_6_10))
                 pv = fcf / ((1 + discount_rate) ** yr)
-                projected_fcfs.append({"Year": f"Year {yr}", "Projected FCF": round(fcf, 1), "Present Value": round(pv, 1)})
+                projected_fcfs.append({"Year": f"Yr {yr}", "FCF": round(fcf, 1), "PV": round(pv, 1)})
 
-            terminal_value = projected_fcfs[-1]["Projected FCF"] * (1 + terminal_growth) / (discount_rate - terminal_growth)
+            terminal_value = projected_fcfs[-1]["FCF"] * (1 + terminal_growth) / (discount_rate - terminal_growth)
             pv_terminal = terminal_value / ((1 + discount_rate) ** 10)
-            total_pv = sum(p["Present Value"] for p in projected_fcfs) + pv_terminal
+            total_pv = sum(p["PV"] for p in projected_fcfs) + pv_terminal
+            shares = latest.get("shares_normalized") or latest.get("shares_outstanding", 1)
+            iv_per_share = total_pv / shares if shares else None
 
-            shares = latest.get("shares_normalized") or (latest.get("shares_outstanding", 1))
-            intrinsic_value_per_share = total_pv / shares if shares else None
-
-            with col2:
-                st.markdown("**Results**")
-                st.metric("Total PV of FCFs", f"{sum(p['Present Value'] for p in projected_fcfs):,.0f}")
-                st.metric("PV of Terminal Value", f"{pv_terminal:,.0f}")
+            with c2:
+                st.metric("PV of FCFs", f"{sum(p['PV'] for p in projected_fcfs):,.0f}")
+                st.metric("PV Terminal Value", f"{pv_terminal:,.0f}")
                 st.metric("Total Intrinsic Value", f"{total_pv:,.0f}")
-                if intrinsic_value_per_share:
-                    st.metric("Intrinsic Value per Share", f"Rp {intrinsic_value_per_share:,.0f}")
+                if iv_per_share:
+                    st.metric("Per Share", f"Rp {iv_per_share:,.0f}")
                     if latest_price and not pd.isna(latest_price):
-                        margin = (intrinsic_value_per_share - latest_price) / intrinsic_value_per_share * 100
+                        margin = (iv_per_share - latest_price) / iv_per_share * 100
                         if margin > 0:
-                            st.success(f"✅ Margin of Safety: {margin:.1f}% — potentially undervalued")
+                            st.success(f"✅ Margin of Safety: {margin:.1f}%")
                         else:
-                            st.error(f"⚠️ Trading {abs(margin):.1f}% above intrinsic value estimate")
+                            st.error(f"⚠️ {abs(margin):.1f}% above intrinsic value")
 
-            st.markdown("**FCF Projection Table**")
-            proj_df = pd.DataFrame(projected_fcfs)
-            st.dataframe(proj_df, use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(projected_fcfs), use_container_width=True, hide_index=True)
 
     # TAB 6: DIVIDENDS
     with tab6:
-        st.subheader("Dividend Analysis")
-
-        div_cols = ["year", "dividend_per_share", "dividend_yield",
-                    "payout_ratio", "fcf_payout_ratio", "dps_growth_yoy"]
+        div_cols = ["year","dividend_per_share","dividend_yield","payout_ratio","fcf_payout_ratio","dps_growth_yoy"]
         available_div = [c for c in div_cols if c in df.columns]
         div_df = df[available_div].copy()
-        has_dividend_data = div_df["dividend_per_share"].notna().any() if "dividend_per_share" in div_df.columns else False
+        has_div = div_df["dividend_per_share"].notna().any() if "dividend_per_share" in div_df.columns else False
 
-        if not has_dividend_data:
-            st.info("No dividend data entered yet for this company.")
+        if not has_div:
+            st.info("No dividend data yet.")
         else:
             c1, c2, c3, c4 = st.columns(4)
+            with c1: st.metric("Div Yield", f"{latest.get('dividend_yield'):.2f}%" if pd.notna(latest.get('dividend_yield')) else "—")
+            with c2: st.metric("Payout Ratio", f"{latest.get('payout_ratio'):.1f}%" if pd.notna(latest.get('payout_ratio')) else "—")
+            with c3: st.metric("FCF Payout", f"{latest.get('fcf_payout_ratio'):.1f}%" if pd.notna(latest.get('fcf_payout_ratio')) else "—")
+            with c4: st.metric("Years Paying", f"{div_df['dividend_per_share'].notna().sum()} yr(s)")
+
+            c1, c2 = st.columns(2)
             with c1:
-                latest_yield = latest.get("dividend_yield")
-                st.metric("Latest Div Yield", f"{latest_yield:.2f}%" if pd.notna(latest_yield) else "—")
+                if div_df["dividend_per_share"].notna().any():
+                    fig = px.bar(div_df.dropna(subset=["dividend_per_share"]), x="year", y="dividend_per_share", title="DPS History")
+                    fig.update_layout(height=250, margin=dict(t=30,b=10))
+                    st.plotly_chart(fig, use_container_width=True)
             with c2:
-                latest_payout = latest.get("payout_ratio")
-                st.metric("Payout Ratio", f"{latest_payout:.1f}%" if pd.notna(latest_payout) else "—")
-            with c3:
-                latest_fcf_payout = latest.get("fcf_payout_ratio")
-                st.metric("FCF Payout Ratio", f"{latest_fcf_payout:.1f}%" if pd.notna(latest_fcf_payout) else "—")
-            with c4:
-                years_paying = div_df["dividend_per_share"].notna().sum()
-                st.metric("Years Paying Dividend", f"{years_paying} yr(s)")
+                if "dividend_yield" in div_df.columns and div_df["dividend_yield"].notna().any():
+                    fig = px.line(div_df.dropna(subset=["dividend_yield"]), x="year", y="dividend_yield", markers=True, title="Yield %")
+                    fig.update_layout(height=250, margin=dict(t=30,b=10))
+                    st.plotly_chart(fig, use_container_width=True)
 
-            if "dividend_per_share" in div_df.columns and div_df["dividend_per_share"].notna().any():
-                fig = px.bar(div_df.dropna(subset=["dividend_per_share"]),
-                             x="year", y="dividend_per_share", title="Dividend Per Share (DPS) History")
-                fig.update_layout(height=300)
-                st.plotly_chart(fig, use_container_width=True)
-
-            if "dividend_yield" in div_df.columns and div_df["dividend_yield"].notna().any():
-                fig = px.line(div_df.dropna(subset=["dividend_yield"]),
-                              x="year", y="dividend_yield", markers=True, title="Dividend Yield Over Time (%)")
-                fig.update_layout(height=300)
-                st.plotly_chart(fig, use_container_width=True)
-
-            st.markdown("**Sustainability Check**")
             if pd.notna(latest.get("payout_ratio")):
                 pr = latest["payout_ratio"]
-                if pr > 100:
-                    st.error(f"🔴 Payout ratio {pr:.1f}% — paying more than it earns, unsustainable")
-                elif pr > 75:
-                    st.warning(f"🟡 Payout ratio {pr:.1f}% — high, leaves little room for reinvestment")
-                else:
-                    st.success(f"🟢 Payout ratio {pr:.1f}% — sustainable dividend level")
+                if pr > 100: st.error(f"🔴 Payout {pr:.1f}% — paying more than earned")
+                elif pr > 75: st.warning(f"🟡 Payout {pr:.1f}% — high")
+                else: st.success(f"🟢 Payout {pr:.1f}% — sustainable")
 
-            rename_map = {
-                "year": "Year", "dividend_per_share": "DPS",
-                "dividend_yield": "Yield %", "payout_ratio": "Payout %",
-                "fcf_payout_ratio": "FCF Payout %", "dps_growth_yoy": "DPS Growth %"
-            }
-            display_div = div_df.rename(columns=rename_map)
-            numeric = display_div.select_dtypes(include="number").columns
-            display_div[numeric] = display_div[numeric].round(2)
-            st.dataframe(display_div, use_container_width=True, hide_index=True)
+
+# ============================================================
+# SECTOR COMPARISON PAGE
+# ============================================================
+def show_comparison():
+    st.title("📊 Sector Comparison")
+
+    df = load_ratios()
+    if df.empty:
+        st.warning("No data yet.")
+        return
+
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        years = sorted(df["year"].dropna().unique().tolist(), reverse=True)
+        sel_year = st.selectbox("Year", years)
+    with c2:
+        sectors = ["All"] + sorted(df["sector"].dropna().unique().tolist())
+        sel_sector = st.selectbox("Sector", sectors)
+    with c3:
+        all_tickers = sorted(df["ticker"].dropna().unique().tolist())
+        sel_tickers = st.multiselect("Or pick specific companies", all_tickers)
+
+    year_df = df[df["year"] == sel_year].copy()
+    if sel_tickers:
+        comp_df = year_df[year_df["ticker"].isin(sel_tickers)]
+    elif sel_sector != "All":
+        comp_df = year_df[year_df["sector"] == sel_sector]
+    else:
+        comp_df = year_df
+
+    if comp_df.empty:
+        st.info("No companies match your selection.")
+        return
+
+    st.caption(f"{len(comp_df)} companies · FY{sel_year}")
+    st.divider()
+
+    # ── RANKING TABLE ──
+    st.markdown("**📋 Rankings Table**")
+    rank_cols = {
+        "ticker": "Ticker", "name": "Company",
+        "per": "PER", "pbv": "PBV", "roe": "ROE %",
+        "net_margin": "Net Margin %", "gross_margin": "Gross Margin %",
+        "der": "DER", "current_ratio": "Curr Ratio",
+        "interest_coverage": "Int Coverage", "ocf_to_ni": "OCF/NI",
+        "revenue_growth_yoy": "Rev Growth %", "ni_growth_yoy": "NI Growth %",
+        "dividend_yield": "Div Yield %"
+    }
+    avail_rank = [c for c in rank_cols if c in comp_df.columns]
+    rank_df = comp_df[avail_rank].rename(columns=rank_cols)
+    rank_df = rank_df.set_index("Ticker")
+    if "Company" in rank_df.columns:
+        rank_df = rank_df.drop(columns=["Company"])
+    rank_df = rank_df.select_dtypes(include="number").round(2)
+
+    def color_table(val, col_name):
+        if pd.isna(val): return ""
+        good_high = ["ROE %","Net Margin %","Gross Margin %","Curr Ratio","Int Coverage","OCF/NI","Rev Growth %","NI Growth %","Div Yield %"]
+        good_low = ["PER","PBV","DER"]
+        try:
+            col_vals = rank_df[col_name].dropna()
+            if len(col_vals) < 2: return ""
+            if col_name in good_high:
+                if val >= col_vals.quantile(0.66): return "background-color: #d4edda; color: #155724"
+                if val <= col_vals.quantile(0.33): return "background-color: #f8d7da; color: #721c24"
+            elif col_name in good_low:
+                if val <= col_vals.quantile(0.33): return "background-color: #d4edda; color: #155724"
+                if val >= col_vals.quantile(0.66): return "background-color: #f8d7da; color: #721c24"
+        except: pass
+        return ""
+
+    styled = rank_df.style.apply(lambda col: [color_table(v, col.name) for v in col], axis=0)
+    st.dataframe(styled, use_container_width=True)
+    st.caption("🟢 Best in group · 🔴 Worst in group")
+    st.divider()
+
+    # ── BAR CHARTS ──
+    st.markdown("**📊 Revenue & Net Income**")
+    c1, c2 = st.columns(2)
+    with c1:
+        if "revenue" in comp_df.columns:
+            fig = px.bar(comp_df.sort_values("revenue", ascending=False),
+                         x="ticker", y="revenue", color="ticker",
+                         title="Revenue", color_discrete_sequence=px.colors.qualitative.Set2)
+            fig.update_layout(height=280, margin=dict(t=30,b=10), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+    with c2:
+        if "net_income" in comp_df.columns:
+            fig = px.bar(comp_df.sort_values("net_income", ascending=False),
+                         x="ticker", y="net_income", color="ticker",
+                         title="Net Income", color_discrete_sequence=px.colors.qualitative.Set2)
+            fig.update_layout(height=280, margin=dict(t=30,b=10), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    # ── PROFITABILITY ──
+    st.markdown("**📊 Profitability**")
+    c1, c2 = st.columns(2)
+    with c1:
+        if "net_margin" in comp_df.columns and "gross_margin" in comp_df.columns:
+            margin_df = comp_df[["ticker","net_margin","gross_margin"]].melt(
+                id_vars="ticker", var_name="type", value_name="margin")
+            margin_df["type"] = margin_df["type"].map({"net_margin":"Net Margin","gross_margin":"Gross Margin"})
+            fig = px.bar(margin_df, x="ticker", y="margin", color="type", barmode="group",
+                         title="Margins (%)", color_discrete_sequence=["#2196F3","#4CAF50"])
+            fig.update_layout(height=280, margin=dict(t=30,b=10))
+            st.plotly_chart(fig, use_container_width=True)
+    with c2:
+        if "roe" in comp_df.columns and "roa" in comp_df.columns:
+            returns_df = comp_df[["ticker","roe","roa"]].melt(
+                id_vars="ticker", var_name="type", value_name="value")
+            returns_df["type"] = returns_df["type"].map({"roe":"ROE","roa":"ROA"})
+            fig = px.bar(returns_df, x="ticker", y="value", color="type", barmode="group",
+                         title="ROE vs ROA (%)", color_discrete_sequence=["#FF9800","#9C27B0"])
+            fig.update_layout(height=280, margin=dict(t=30,b=10))
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+
+    # ── RADAR CHART ──
+    st.markdown("**🕸️ Radar Chart — Multi-Ratio Comparison**")
+    st.caption("Normalized 0–100 within selected group (100 = best)")
+
+    radar_metrics = {
+        "net_margin": "Net Margin",
+        "roe": "ROE",
+        "current_ratio": "Curr Ratio",
+        "interest_coverage": "Int Coverage",
+        "revenue_growth_yoy": "Rev Growth",
+        "ocf_to_ni": "OCF Quality",
+    }
+
+    radar_df = comp_df[["ticker"] + [m for m in radar_metrics if m in comp_df.columns]].copy()
+    radar_df = radar_df.dropna(thresh=3)
+
+    if len(radar_df) < 2:
+        st.info("Need at least 2 companies with complete data for radar chart.")
+    else:
+        normalized = radar_df.copy()
+        for col in radar_metrics:
+            if col in normalized.columns:
+                col_min = normalized[col].min()
+                col_max = normalized[col].max()
+                if col_max > col_min:
+                    normalized[col] = (normalized[col] - col_min) / (col_max - col_min) * 100
+                else:
+                    normalized[col] = 50
+
+        fig = go.Figure()
+        categories = [radar_metrics[m] for m in radar_metrics if m in normalized.columns]
+        colors = px.colors.qualitative.Set2
+
+        for i, (_, row) in enumerate(normalized.iterrows()):
+            values = [row[m] for m in radar_metrics if m in normalized.columns]
+            fig.add_trace(go.Scatterpolar(
+                r=values + [values[0]],
+                theta=categories + [categories[0]],
+                fill='toself',
+                name=row["ticker"],
+                line_color=colors[i % len(colors)],
+                fillcolor=colors[i % len(colors)],
+                opacity=0.3
+            ))
+
+        fig.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0,100])),
+            height=420, margin=dict(t=30,b=30),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.15)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+
+    # ── RED FLAG SUMMARY ──
+    st.markdown("**🚨 Red Flag Summary**")
+    st.caption("Quick health check across all selected companies")
+
+    flag_rows = []
+    for _, company_row in comp_df.iterrows():
+        t = company_row["ticker"]
+        hist = load_company_history(t)
+        if len(hist) < 2:
+            flag_rows.append({"Ticker": t, "🔴 Critical": 0, "🟡 Watch": 0, "🟢 Healthy": 0, "Overall": "⬜ Not enough data"})
+            continue
+
+        last = hist.iloc[-1]
+        prev = hist.iloc[-2]
+        f, w, g = 0, 0, 0
+
+        if pd.notna(last.get("total_debt")) and pd.notna(prev.get("total_debt")) and \
+           pd.notna(last.get("revenue")) and pd.notna(prev.get("revenue")):
+            dg = (last["total_debt"] - prev["total_debt"]) / abs(prev["total_debt"]) * 100
+            rg = (last["revenue"] - prev["revenue"]) / abs(prev["revenue"]) * 100
+            if dg > rg + 20: f += 1
+            else: g += 1
+
+        margins = hist["net_margin"].dropna().tolist()
+        if len(margins) >= 3 and margins[-1] < margins[-2] < margins[-3]: f += 1
+        elif len(margins) >= 2 and margins[-1] < margins[-2]: w += 1
+        elif len(margins) >= 2: g += 1
+
+        if pd.notna(last.get("fcf")) and pd.notna(last.get("net_income")):
+            if last["fcf"] < 0 and last["net_income"] > 0: f += 1
+            elif last["fcf"] > 0: g += 1
+
+        if pd.notna(last.get("ocf_to_ni")):
+            if last["ocf_to_ni"] < 0.7: w += 1
+            elif last["ocf_to_ni"] >= 1.0: g += 1
+
+        if pd.notna(last.get("dividends_paid")) and pd.notna(last.get("net_income")):
+            if last["dividends_paid"] > 0 and last["net_income"] > 0:
+                if last["dividends_paid"] > last["net_income"]: f += 1
+                elif last["dividends_paid"] > last["net_income"] * 0.9: w += 1
+
+        if pd.notna(last.get("der")):
+            if last["der"] > 2.0: f += 1
+            elif last["der"] > 1.0: w += 1
+            else: g += 1
+
+        if pd.notna(last.get("interest_coverage")):
+            if last["interest_coverage"] < 2: f += 1
+            elif last["interest_coverage"] < 4: w += 1
+            else: g += 1
+
+        if f == 0 and w == 0: status = "🟢 All clear"
+        elif f == 0: status = "🟡 Watch"
+        elif f >= 2: status = "🔴 Multiple issues"
+        else: status = "🔴 Critical flag"
+
+        flag_rows.append({"Ticker": t, "🔴 Critical": f, "🟡 Watch": w, "🟢 Healthy": g, "Overall": status})
+
+    st.dataframe(pd.DataFrame(flag_rows), use_container_width=True, hide_index=True)
 
 
 # ============================================================
@@ -498,18 +674,13 @@ def show_company(ticker):
 # ============================================================
 def show_data_input():
     st.title("➕ Data Input Center")
-    st.caption("Add or edit companies, financial statements, and stock prices")
 
     input_tab1, input_tab2, input_tab3 = st.tabs([
         "🏢 Companies", "📊 Financial Statements", "💹 Stock Prices"
     ])
 
-    # ──────────────────────────────────────────
-    # TAB 1: COMPANIES
-    # ──────────────────────────────────────────
     with input_tab1:
         companies_df = load_companies()
-
         col_add, col_edit = st.columns(2)
 
         with col_add:
@@ -519,10 +690,8 @@ def show_data_input():
                 name = st.text_input("Company Name *", placeholder="e.g. Bank Central Asia Tbk")
                 sector = st.text_input("Sector *", placeholder="e.g. Financials")
                 sub_sector = st.text_input("Sub Sector", placeholder="e.g. Banking")
-                shares = st.number_input("Shares Outstanding", min_value=0, value=0, step=1000000,
-                                          help="Total number of shares")
-                report_unit = st.selectbox("Report Unit", ["millions", "billions", "thousands"])
-
+                shares = st.number_input("Shares Outstanding", min_value=0, value=0, step=1000000)
+                report_unit = st.selectbox("Report Unit", ["millions","billions","thousands"])
                 submitted = st.form_submit_button("➕ Add Company", use_container_width=True)
                 if submitted:
                     if not ticker or not name or not sector:
@@ -530,19 +699,17 @@ def show_data_input():
                     else:
                         existing = companies_df[companies_df["ticker"] == ticker] if not companies_df.empty else pd.DataFrame()
                         if not existing.empty:
-                            st.error(f"Company {ticker} already exists. Use the edit section.")
+                            st.error(f"{ticker} already exists. Use edit.")
                         else:
                             try:
                                 supabase.table("companies").insert({
-                                    "ticker": ticker,
-                                    "name": name,
-                                    "sector": sector,
-                                    "sub_sector": sub_sector if sub_sector else None,
+                                    "ticker": ticker, "name": name, "sector": sector,
+                                    "sub_sector": sub_sector or None,
                                     "shares_outstanding": int(shares) if shares > 0 else None,
                                     "report_unit": report_unit
                                 }).execute()
                                 clear_cache()
-                                st.success(f"✅ {ticker} added successfully!")
+                                st.success(f"✅ {ticker} added!")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
@@ -552,31 +719,23 @@ def show_data_input():
             if companies_df.empty:
                 st.info("No companies yet.")
             else:
-                edit_ticker = st.selectbox("Select company to edit", companies_df["ticker"].tolist(), key="edit_company_select")
+                edit_ticker = st.selectbox("Select company", companies_df["ticker"].tolist(), key="edit_co")
                 company_row = companies_df[companies_df["ticker"] == edit_ticker].iloc[0]
-
                 with st.form("edit_company_form"):
-                    e_name = st.text_input("Company Name", value=str(company_row.get("name", "")))
-                    e_sector = st.text_input("Sector", value=str(company_row.get("sector", "")))
-                    e_sub_sector = st.text_input("Sub Sector", value=str(company_row.get("sub_sector", "") or ""))
-                    e_shares = st.number_input("Shares Outstanding",
-                                               value=int(company_row.get("shares_outstanding") or 0),
-                                               min_value=0, step=1000000)
-                    e_unit = st.selectbox("Report Unit", ["millions", "billions", "thousands"],
-                                          index=["millions", "billions", "thousands"].index(
-                                              company_row.get("report_unit", "millions")))
-
-                    save = st.form_submit_button("💾 Save Changes", use_container_width=True)
-                    if save:
+                    e_name = st.text_input("Name", value=str(company_row.get("name","")))
+                    e_sector = st.text_input("Sector", value=str(company_row.get("sector","")))
+                    e_sub = st.text_input("Sub Sector", value=str(company_row.get("sub_sector","") or ""))
+                    e_shares = st.number_input("Shares", value=int(company_row.get("shares_outstanding") or 0), min_value=0, step=1000000)
+                    e_unit = st.selectbox("Report Unit", ["millions","billions","thousands"],
+                                          index=["millions","billions","thousands"].index(company_row.get("report_unit","millions")))
+                    if st.form_submit_button("💾 Save", use_container_width=True):
                         try:
-                            company_id = company_row["id"]
                             supabase.table("companies").update({
-                                "name": e_name,
-                                "sector": e_sector,
-                                "sub_sector": e_sub_sector if e_sub_sector else None,
+                                "name": e_name, "sector": e_sector,
+                                "sub_sector": e_sub or None,
                                 "shares_outstanding": int(e_shares) if e_shares > 0 else None,
                                 "report_unit": e_unit
-                            }).eq("id", company_id).execute()
+                            }).eq("id", company_row["id"]).execute()
                             clear_cache()
                             st.success(f"✅ {edit_ticker} updated!")
                             st.rerun()
@@ -584,51 +743,38 @@ def show_data_input():
                             st.error(f"Error: {e}")
 
         st.divider()
-        st.subheader("All Companies")
         if not companies_df.empty:
-            st.dataframe(companies_df[["ticker", "name", "sector", "sub_sector", "shares_outstanding", "report_unit"]],
+            st.dataframe(companies_df[["ticker","name","sector","sub_sector","shares_outstanding","report_unit"]],
                          use_container_width=True, hide_index=True)
 
-    # ──────────────────────────────────────────
-    # TAB 2: FINANCIAL STATEMENTS
-    # ──────────────────────────────────────────
     with input_tab2:
         companies_df = load_companies()
         financials_df = load_financials()
 
         if companies_df.empty:
-            st.warning("Add a company first before entering financial data.")
+            st.warning("Add a company first.")
         else:
-            ticker_options = companies_df["ticker"].tolist()
-
-            # Select mode
-            mode = st.radio("Mode", ["Add New", "Edit Existing"], horizontal=True)
+            mode = st.radio("Mode", ["Add New","Edit Existing"], horizontal=True)
 
             if mode == "Edit Existing":
                 if financials_df.empty:
                     st.info("No financial statements yet.")
                 else:
-                    # Merge ticker info
                     fin_with_ticker = financials_df.merge(
-                        companies_df[["id", "ticker"]], left_on="company_id", right_on="id", how="left"
-                    )
+                        companies_df[["id","ticker"]], left_on="company_id", right_on="id", how="left")
                     fin_options = fin_with_ticker.apply(
-                        lambda r: f"{r['ticker']} — {int(r['year'])} ({r['period']})", axis=1
-                    ).tolist()
-                    selected_fin = st.selectbox("Select record to edit", fin_options)
-                    selected_idx = fin_options.index(selected_fin)
-                    fin_row = fin_with_ticker.iloc[selected_idx]
-                    fin_id = financials_df.iloc[selected_idx]["id"]
+                        lambda r: f"{r['ticker']} — {int(r['year'])} ({r['period']})", axis=1).tolist()
+                    selected_fin = st.selectbox("Select record", fin_options)
+                    sel_idx = fin_options.index(selected_fin)
+                    fin_row = fin_with_ticker.iloc[sel_idx]
+                    fin_id = financials_df.iloc[sel_idx]["id"]
 
                     def v(col):
                         val = fin_row.get(col)
-                        if val is None or (isinstance(val, float) and pd.isna(val)):
-                            return 0.0
+                        if val is None or (isinstance(val, float) and pd.isna(val)): return 0.0
                         return float(val)
 
-                    st.markdown("---")
-                    st.subheader(f"Editing: {fin_row['ticker']} FY{int(fin_row['year'])}")
-
+                    st.markdown(f"**Editing: {fin_row['ticker']} FY{int(fin_row['year'])}**")
                     with st.form("edit_fin_form"):
                         st.markdown("**Income Statement**")
                         c1, c2, c3 = st.columns(3)
@@ -662,15 +808,11 @@ def show_data_input():
 
                         st.markdown("**Cash Flow**")
                         c1, c2, c3 = st.columns(3)
-                        with c1:
-                            e_ocf = st.number_input("Operating Cash Flow", value=v("operating_cash_flow"), format="%.0f")
-                        with c2:
-                            e_capex = st.number_input("Capex", value=v("capex"), format="%.0f")
-                        with c3:
-                            e_div = st.number_input("Dividends Paid", value=v("dividends_paid"), format="%.0f")
+                        with c1: e_ocf = st.number_input("Operating CF", value=v("operating_cash_flow"), format="%.0f")
+                        with c2: e_capex = st.number_input("Capex", value=v("capex"), format="%.0f")
+                        with c3: e_div = st.number_input("Dividends Paid", value=v("dividends_paid"), format="%.0f")
 
-                        save_fin = st.form_submit_button("💾 Save Changes", use_container_width=True)
-                        if save_fin:
+                        if st.form_submit_button("💾 Save Changes", use_container_width=True):
                             try:
                                 supabase.table("financial_statements").update({
                                     "revenue": e_rev or None, "cogs": e_cogs or None,
@@ -686,19 +828,18 @@ def show_data_input():
                                     "dividends_paid": e_div or None
                                 }).eq("id", fin_id).execute()
                                 clear_cache()
-                                st.success("✅ Financial statement updated!")
+                                st.success("✅ Updated!")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
 
-            else:  # Add New
-                st.markdown("---")
+            else:
                 with st.form("add_fin_form"):
                     c1, c2, c3 = st.columns(3)
                     with c1:
-                        sel_ticker = st.selectbox("Company *", ticker_options)
+                        sel_ticker = st.selectbox("Company *", companies_df["ticker"].tolist())
                         sel_year = st.number_input("Year *", min_value=2000, max_value=2030, value=2023, step=1)
-                        sel_period = st.selectbox("Period", ["annual", "Q1", "Q2", "Q3", "Q4"])
+                        sel_period = st.selectbox("Period", ["annual","Q1","Q2","Q3","Q4"])
 
                     st.markdown("**Income Statement**")
                     c1, c2, c3 = st.columns(3)
@@ -732,22 +873,15 @@ def show_data_input():
 
                     st.markdown("**Cash Flow**")
                     c1, c2, c3 = st.columns(3)
-                    with c1:
-                        n_ocf = st.number_input("Operating Cash Flow", value=0.0, format="%.0f")
-                    with c2:
-                        n_capex = st.number_input("Capex", value=0.0, format="%.0f")
-                    with c3:
-                        n_div = st.number_input("Dividends Paid", value=0.0, format="%.0f")
+                    with c1: n_ocf = st.number_input("Operating CF", value=0.0, format="%.0f")
+                    with c2: n_capex = st.number_input("Capex", value=0.0, format="%.0f")
+                    with c3: n_div = st.number_input("Dividends Paid", value=0.0, format="%.0f")
 
-                    add_fin = st.form_submit_button("➕ Add Financial Statement", use_container_width=True)
-                    if add_fin:
-                        company_row = companies_df[companies_df["ticker"] == sel_ticker].iloc[0]
-                        company_id = company_row["id"]
+                    if st.form_submit_button("➕ Add Financial Statement", use_container_width=True):
+                        company_id = companies_df[companies_df["ticker"] == sel_ticker].iloc[0]["id"]
                         try:
                             supabase.table("financial_statements").insert({
-                                "company_id": company_id,
-                                "year": int(sel_year),
-                                "period": sel_period,
+                                "company_id": company_id, "year": int(sel_year), "period": sel_period,
                                 "revenue": n_rev or None, "cogs": n_cogs or None,
                                 "gross_profit": n_gp or None, "ebit": n_ebit or None,
                                 "interest_expense": n_int or None, "tax_expense": n_tax or None,
@@ -766,16 +900,12 @@ def show_data_input():
                         except Exception as e:
                             st.error(f"Error: {e}")
 
-    # ──────────────────────────────────────────
-    # TAB 3: STOCK PRICES
-    # ──────────────────────────────────────────
     with input_tab3:
         companies_df = load_companies()
         market_df = load_market_data()
+        c1, c2 = st.columns(2)
 
-        col_add, col_edit = st.columns(2)
-
-        with col_add:
+        with c1:
             st.subheader("Add / Update Stock Price")
             if companies_df.empty:
                 st.info("Add a company first.")
@@ -784,11 +914,9 @@ def show_data_input():
                     p_ticker = st.selectbox("Company", companies_df["ticker"].tolist())
                     p_date = st.date_input("Date")
                     p_price = st.number_input("Stock Price (IDR)", min_value=0.0, value=0.0, format="%.0f")
-
-                    add_price = st.form_submit_button("➕ Add Price", use_container_width=True)
-                    if add_price:
+                    if st.form_submit_button("➕ Add Price", use_container_width=True):
                         if p_price <= 0:
-                            st.error("Price must be greater than 0.")
+                            st.error("Price must be > 0.")
                         else:
                             company_id = companies_df[companies_df["ticker"] == p_ticker].iloc[0]["id"]
                             try:
@@ -798,22 +926,20 @@ def show_data_input():
                                     "stock_price": float(p_price)
                                 }, on_conflict="company_id,date").execute()
                                 clear_cache()
-                                st.success(f"✅ Price for {p_ticker} on {p_date} saved!")
+                                st.success(f"✅ {p_ticker} on {p_date} saved!")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
 
-        with col_edit:
+        with c2:
             st.subheader("Existing Prices")
             if market_df.empty:
-                st.info("No stock prices yet.")
+                st.info("No prices yet.")
             else:
                 prices_with_ticker = market_df.merge(
-                    companies_df[["id", "ticker"]], left_on="company_id", right_on="id", how="left"
-                )
-                display_prices = prices_with_ticker[["ticker", "date", "stock_price"]].sort_values(
-                    ["ticker", "date"], ascending=[True, False]
-                )
+                    companies_df[["id","ticker"]], left_on="company_id", right_on="id", how="left")
+                display_prices = prices_with_ticker[["ticker","date","stock_price"]].sort_values(
+                    ["ticker","date"], ascending=[True,False])
                 st.dataframe(display_prices, use_container_width=True, hide_index=True)
 
 
@@ -824,6 +950,8 @@ if st.session_state.page == "screener":
     show_screener()
 elif st.session_state.page == "company" and st.session_state.selected_ticker:
     show_company(st.session_state.selected_ticker)
+elif st.session_state.page == "comparison":
+    show_comparison()
 elif st.session_state.page == "data_input":
     show_data_input()
 else:
