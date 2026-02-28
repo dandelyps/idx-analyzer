@@ -320,6 +320,14 @@ def show_company(ticker):
                 if rec_growth > rev_growth + 15:
                     warnings.append(f"🟡 Receivables growing faster than revenue ({rec_growth:.1f}% vs {rev_growth:.1f}%) — potential collection issue")
 
+            # Dividends exceeding net income
+            if pd.notna(last.get("dividends_paid")) and pd.notna(last.get("net_income")):
+                if last["dividends_paid"] > 0 and last["net_income"] > 0:
+                    if last["dividends_paid"] > last["net_income"]:
+                        flags.append(f"🔴 Dividends paid ({last['dividends_paid']:,.0f}) exceeded net income ({last['net_income']:,.0f}) — paying out more than earned")
+                    elif last["dividends_paid"] > last["net_income"] * 0.9:
+                        warnings.append(f"🟡 Dividends paid ({last['dividends_paid']:,.0f}) is {last['dividends_paid']/last['net_income']*100:.0f}% of net income — very high payout ratio")
+
             # High DER
             if pd.notna(last.get("der")):
                 if last["der"] > 2.0:
