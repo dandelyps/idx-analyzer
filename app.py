@@ -519,15 +519,21 @@ def show_comparison():
         if "revenue" in comp_df.columns:
             fig = px.bar(comp_df.sort_values("revenue", ascending=False),
                          x="ticker", y="revenue", color="ticker",
-                         title="Revenue", color_discrete_sequence=px.colors.qualitative.Set2)
-            fig.update_layout(height=280, margin=dict(t=30,b=10), showlegend=False)
+                         title="Revenue", color_discrete_sequence=px.colors.qualitative.Set2,
+                         text="revenue")
+            fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+            fig.update_layout(height=300, margin=dict(t=30,b=10,r=10), showlegend=False,
+                               yaxis=dict(range=[0, comp_df["revenue"].max() * 1.2]))
             st.plotly_chart(fig, use_container_width=True)
     with c2:
         if "net_income" in comp_df.columns:
             fig = px.bar(comp_df.sort_values("net_income", ascending=False),
                          x="ticker", y="net_income", color="ticker",
-                         title="Net Income", color_discrete_sequence=px.colors.qualitative.Set2)
-            fig.update_layout(height=280, margin=dict(t=30,b=10), showlegend=False)
+                         title="Net Income", color_discrete_sequence=px.colors.qualitative.Set2,
+                         text="net_income")
+            fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+            fig.update_layout(height=300, margin=dict(t=30,b=10,r=10), showlegend=False,
+                               yaxis=dict(range=[0, comp_df["net_income"].max() * 1.2]))
             st.plotly_chart(fig, use_container_width=True)
 
     # ── PROFITABILITY ──
@@ -539,8 +545,11 @@ def show_comparison():
                 id_vars="ticker", var_name="type", value_name="margin")
             margin_df["type"] = margin_df["type"].map({"net_margin":"Net Margin","gross_margin":"Gross Margin"})
             fig = px.bar(margin_df, x="ticker", y="margin", color="type", barmode="group",
-                         title="Margins (%)", color_discrete_sequence=["#2196F3","#4CAF50"])
-            fig.update_layout(height=280, margin=dict(t=30,b=10))
+                         title="Margins (%)", color_discrete_sequence=["#2196F3","#4CAF50"],
+                         text="margin")
+            fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+            fig.update_layout(height=300, margin=dict(t=30,b=10),
+                               yaxis=dict(range=[0, margin_df["margin"].max() * 1.2]))
             st.plotly_chart(fig, use_container_width=True)
     with c2:
         if "roe" in comp_df.columns and "roa" in comp_df.columns:
@@ -548,8 +557,11 @@ def show_comparison():
                 id_vars="ticker", var_name="type", value_name="value")
             returns_df["type"] = returns_df["type"].map({"roe":"ROE","roa":"ROA"})
             fig = px.bar(returns_df, x="ticker", y="value", color="type", barmode="group",
-                         title="ROE vs ROA (%)", color_discrete_sequence=["#FF9800","#9C27B0"])
-            fig.update_layout(height=280, margin=dict(t=30,b=10))
+                         title="ROE vs ROA (%)", color_discrete_sequence=["#FF9800","#9C27B0"],
+                         text="value")
+            fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+            fig.update_layout(height=300, margin=dict(t=30,b=10),
+                               yaxis=dict(range=[0, returns_df["value"].max() * 1.2]))
             st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
