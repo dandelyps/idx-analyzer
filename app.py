@@ -687,8 +687,8 @@ def show_comparison():
 def show_data_input():
     st.title("➕ Data Input Center")
 
-    input_tab1, input_tab2, input_tab3 = st.tabs([
-        "🏢 Companies", "📊 Financial Statements", "💹 Stock Prices"
+    input_tab1, input_tab2, input_tab3, input_tab4 = st.tabs([
+        "🏢 Companies", "📊 Financial Statements", "💹 Stock Prices", "📥 CSV Import"
     ])
 
     with input_tab1:
@@ -953,6 +953,274 @@ def show_data_input():
                 display_prices = prices_with_ticker[["ticker","date","stock_price"]].sort_values(
                     ["ticker","date"], ascending=[True,False])
                 st.dataframe(display_prices, use_container_width=True, hide_index=True)
+
+
+    with input_tab4:
+        st.subheader("📥 CSV Batch Import")
+        st.caption("Import multiple companies and their financial data at once")
+
+        companies_df = load_companies()
+
+        # ── TEMPLATE DOWNLOAD ──
+        st.markdown("**Step 1: Download the template**")
+
+        template_cols = [
+            "ticker", "name", "sector", "sub_sector", "shares_outstanding", "report_unit",
+            "year", "period",
+            "revenue", "cogs", "gross_profit", "ebit", "interest_expense", "tax_expense",
+            "net_income", "depreciation_amortization", "eps_diluted",
+            "cash", "accounts_receivable", "inventory",
+            "total_current_assets", "total_assets", "total_current_liabilities",
+            "total_debt", "total_liabilities", "total_equity",
+            "operating_cash_flow", "capex", "dividends_paid",
+            "stock_price", "price_date"
+        ]
+
+        sample_data = {
+            "ticker": ["ITMG", "ITMG"],
+            "name": ["Indo Tambangraya Megah Tbk", "Indo Tambangraya Megah Tbk"],
+            "sector": ["Energy", "Energy"],
+            "sub_sector": ["Coal Production", "Coal Production"],
+            "shares_outstanding": [1129925000, 1129925000],
+            "report_unit": ["millions", "millions"],
+            "year": [2023, 2022],
+            "period": ["annual", "annual"],
+            "revenue": [24000000, 32000000],
+            "cogs": [14000000, 16000000],
+            "gross_profit": [10000000, 16000000],
+            "ebit": [9500000, 15500000],
+            "interest_expense": [50000, 60000],
+            "tax_expense": [2500000, 4000000],
+            "net_income": [7000000, 11000000],
+            "depreciation_amortization": [500000, 480000],
+            "eps_diluted": [6200, 9700],
+            "cash": [8000000, 10000000],
+            "accounts_receivable": [1500000, 2000000],
+            "inventory": [800000, 900000],
+            "total_current_assets": [12000000, 15000000],
+            "total_assets": [18000000, 22000000],
+            "total_current_liabilities": [3000000, 4000000],
+            "total_debt": [500000, 600000],
+            "total_liabilities": [5000000, 6000000],
+            "total_equity": [13000000, 16000000],
+            "operating_cash_flow": [6000000, 10000000],
+            "capex": [400000, 350000],
+            "dividends_paid": [8000000, 12000000],
+            "stock_price": [28000, 28000],
+            "price_date": ["2024-01-15", "2024-01-15"]
+        }
+
+        template_df = pd.DataFrame(sample_data)
+        csv_template = template_df.to_csv(index=False)
+
+        st.download_button(
+            label="⬇️ Download CSV Template",
+            data=csv_template,
+            file_name="idx_import_template.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+        st.caption("Fill in the template with your data. Each row = one company-year combination. Company info (name, sector, shares) can be repeated across years.")
+
+        st.divider()
+
+        # ── UPLOAD & PREVIEW ──
+        st.markdown("**Step 2: Upload your filled CSV**")
+        uploaded_file = st.file_uploader("Upload CSV", type=["csv"], label_visibility="collapsed")
+
+        if uploaded_file is not None:
+            try:
+                upload_df = pd.read_csv(uploaded_file)
+                st.success(f"✅ Loaded {len(upload_df)} rows · {upload_df['ticker'].nunique()} unique tickers")
+
+                # ── VALIDATION ──
+                st.markdown("**Step 3: Validation**")
+                errors = []
+                warnings_list = []
+
+                required_cols = ["ticker", "name", "sector", "year", "period", "revenue", "net_income", "total_assets", "total_equity"]
+                missing_cols = [c for c in required_cols if c not in upload_df.columns]
+                if missing_cols:
+                    errors.append(f"Missing required columns: {', '.join(missing_cols)}")
+
+                if not errors:
+                    for _, row in upload_df.iterrows():
+                        t = row.get("ticker", "?")
+                        yr = row.get("year", "?")
+                        label = f"{t} {yr}"
+
+                        # Gross profit check
+                        if pd.notna(row.get("gross_profit")) and pd.notna(row.get("revenue")):
+                            if row["gross_profit"] > row["revenue"]:
+                                errors.append(f"{label}: Gross profit ({row['gross_profit']:,.0f}) > Revenue ({row['revenue']:,.0f})")
+
+                        # Net income vs revenue sanity
+                        if pd.notna(row.get("net_income")) and pd.notna(row.get("revenue")):
+                            if row["revenue"] > 0 and row["net_income"] / row["revenue"] > 0.8:
+                                warnings_list.append(f"{label}: Net margin > 80% — double-check figures")
+
+                        # Equity positive check
+                        if pd.notna(row.get("total_equity")):
+                            if row["total_equity"] < 0:
+                                warnings_list.append(f"{label}: Negative equity — unusual, verify this is correct")
+
+                        # Assets = liabilities + equity check
+                        if pd.notna(row.get("total_assets")) and pd.notna(row.get("total_liabilities")) and pd.notna(row.get("total_equity")):
+                            diff = abs(row["total_assets"] - (row["total_liabilities"] + row["total_equity"]))
+                            pct = diff / row["total_assets"] if row["total_assets"] > 0 else 0
+                            if pct > 0.05:
+                                warnings_list.append(f"{label}: Assets ({row['total_assets']:,.0f}) ≠ Liabilities + Equity ({row['total_liabilities']+row['total_equity']:,.0f}) — may indicate data entry error")
+
+                        # COGS check
+                        if pd.notna(row.get("cogs")) and pd.notna(row.get("revenue")):
+                            if row["cogs"] > row["revenue"]:
+                                warnings_list.append(f"{label}: COGS > Revenue (negative gross margin) — verify this is correct")
+
+                if errors:
+                    st.markdown("**❌ Errors — must fix before importing:**")
+                    for e in errors:
+                        st.error(e)
+                else:
+                    st.success("✅ No critical errors found")
+
+                if warnings_list:
+                    st.markdown("**⚠️ Warnings — review before importing:**")
+                    for w in warnings_list:
+                        st.warning(w)
+
+                st.divider()
+
+                # ── PREVIEW TABLE ──
+                st.markdown("**Step 4: Preview**")
+                preview_cols = ["ticker", "name", "sector", "year", "period", "revenue", "net_income", "total_assets", "total_equity"]
+                preview_avail = [c for c in preview_cols if c in upload_df.columns]
+                st.dataframe(upload_df[preview_avail], use_container_width=True, hide_index=True)
+
+                st.divider()
+
+                # ── IMPORT BUTTON ──
+                st.markdown("**Step 5: Import**")
+
+                # Show what already exists
+                existing_tickers = set(companies_df["ticker"].tolist()) if not companies_df.empty else set()
+                new_tickers = set(upload_df["ticker"].unique()) - existing_tickers
+                existing_in_upload = set(upload_df["ticker"].unique()) & existing_tickers
+
+                if new_tickers:
+                    st.info(f"🆕 New companies to create: {', '.join(sorted(new_tickers))}")
+                if existing_in_upload:
+                    st.info(f"🔄 Existing companies (will add new years only): {', '.join(sorted(existing_in_upload))}")
+
+                col_imp, col_skip = st.columns(2)
+                with col_imp:
+                    skip_errors = st.checkbox("Skip rows with warnings (import only clean rows)", value=False)
+
+                if not errors:
+                    if st.button("🚀 Import All Data", type="primary", use_container_width=True):
+                        progress = st.progress(0)
+                        status = st.empty()
+                        total = len(upload_df)
+                        success_count = 0
+                        error_count = 0
+                        skipped_count = 0
+
+                        # Group by ticker to create companies first
+                        for ticker_val in upload_df["ticker"].unique():
+                            ticker_rows = upload_df[upload_df["ticker"] == ticker_val]
+                            first_row = ticker_rows.iloc[0]
+
+                            # Create company if doesn't exist
+                            if ticker_val not in existing_tickers:
+                                try:
+                                    supabase.table("companies").insert({
+                                        "ticker": str(ticker_val),
+                                        "name": str(first_row.get("name", ticker_val)),
+                                        "sector": str(first_row.get("sector", "")),
+                                        "sub_sector": str(first_row.get("sub_sector", "")) if pd.notna(first_row.get("sub_sector")) else None,
+                                        "shares_outstanding": int(first_row["shares_outstanding"]) if pd.notna(first_row.get("shares_outstanding")) else None,
+                                        "report_unit": str(first_row.get("report_unit", "millions"))
+                                    }).execute()
+                                    existing_tickers.add(ticker_val)
+                                    clear_cache()
+                                except Exception as e:
+                                    st.error(f"Failed to create company {ticker_val}: {e}")
+                                    continue
+
+                        # Reload companies to get IDs
+                        fresh_companies = supabase.table("companies").select("*").execute()
+                        company_map = {row["ticker"]: row["id"] for row in fresh_companies.data}
+
+                        # Insert financial statements
+                        for i, (_, row) in enumerate(upload_df.iterrows()):
+                            progress.progress((i + 1) / total)
+                            ticker_val = row["ticker"]
+                            status.text(f"Importing {ticker_val} {int(row.get('year', ''))}...")
+
+                            if ticker_val not in company_map:
+                                error_count += 1
+                                continue
+
+                            company_id = company_map[ticker_val]
+
+                            def safe_val(col):
+                                v = row.get(col)
+                                return float(v) if pd.notna(v) and v != "" else None
+
+                            try:
+                                supabase.table("financial_statements").insert({
+                                    "company_id": company_id,
+                                    "year": int(row["year"]),
+                                    "period": str(row.get("period", "annual")),
+                                    "revenue": safe_val("revenue"),
+                                    "cogs": safe_val("cogs"),
+                                    "gross_profit": safe_val("gross_profit"),
+                                    "ebit": safe_val("ebit"),
+                                    "interest_expense": safe_val("interest_expense"),
+                                    "tax_expense": safe_val("tax_expense"),
+                                    "net_income": safe_val("net_income"),
+                                    "depreciation_amortization": safe_val("depreciation_amortization"),
+                                    "eps_diluted": safe_val("eps_diluted"),
+                                    "cash": safe_val("cash"),
+                                    "accounts_receivable": safe_val("accounts_receivable"),
+                                    "inventory": safe_val("inventory"),
+                                    "total_current_assets": safe_val("total_current_assets"),
+                                    "total_assets": safe_val("total_assets"),
+                                    "total_current_liabilities": safe_val("total_current_liabilities"),
+                                    "total_debt": safe_val("total_debt"),
+                                    "total_liabilities": safe_val("total_liabilities"),
+                                    "total_equity": safe_val("total_equity"),
+                                    "operating_cash_flow": safe_val("operating_cash_flow"),
+                                    "capex": safe_val("capex"),
+                                    "dividends_paid": safe_val("dividends_paid"),
+                                }).execute()
+                                success_count += 1
+                            except Exception as e:
+                                error_count += 1
+                                st.warning(f"Row {i+1} ({ticker_val} {int(row.get('year',''))}): {e}")
+
+                            # Insert stock price if provided
+                            if pd.notna(row.get("stock_price")) and pd.notna(row.get("price_date")):
+                                try:
+                                    supabase.table("market_data").upsert({
+                                        "company_id": company_id,
+                                        "date": str(row["price_date"]),
+                                        "stock_price": float(row["stock_price"])
+                                    }, on_conflict="company_id,date").execute()
+                                except:
+                                    pass
+
+                        progress.progress(1.0)
+                        clear_cache()
+                        status.empty()
+
+                        if success_count > 0:
+                            st.success(f"✅ Import complete! {success_count} rows inserted, {error_count} failed, {skipped_count} skipped.")
+                            st.balloons()
+                        else:
+                            st.error("Import failed — no rows were inserted.")
+
+            except Exception as e:
+                st.error(f"Failed to read CSV: {e}")
 
 
 # ============================================================
